@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Sitemap: https://shrt.qd.je/sitemap.xml
+Host: https://shrt.qd.je

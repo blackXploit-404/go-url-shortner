@@ -18,4 +18,5 @@ result :
 ```
 {"short_url":"http://localhost:3000/redirect/5c4c05a5"}
 ```
+or just visit : https://shrt.qd.je 
 nothing fancy just created for own go learning stuffs.

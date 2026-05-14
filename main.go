@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,7 +19,6 @@ type URL struct {
 	ShortUrl     string    `json:"shorturl"`
 	CreationDate time.Time `json:"creationdate"`
 }
-
 
 var urlDB = make(map[string]URL)
 
@@ -54,6 +55,16 @@ func getURL(id string) (URL, error) {
 	}
 	return url, nil
 }
+func buildPublicBaseURL(r *http.Request) string {
+	if v := strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	return scheme + "://" + r.Host
+}
 
 func RootPageUrl(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Hello World")
@@ -74,7 +85,7 @@ func shortUrlHandler(w http.ResponseWriter, r *http.Request) {
 	response := struct {
 		ShortURL string `json:"short_url"`
 	}{
-		ShortURL: "http://" + r.Host + "/redirect/" + shortURL,
+		ShortURL: buildPublicBaseURL(r) + "/r/" + shortURL,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(response)
@@ -84,7 +95,7 @@ func shortUrlHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 func redirectUrlHandler(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Path[len("/redirect/"):]
+	id := r.URL.Path[len("/r/"):]
 	url, err := getURL(id)
 	if err != nil {
 		http.Error(w, "Invalid request", http.StatusNotFound)
@@ -101,9 +112,26 @@ func main() {
 	// create http server
 	//http.HandleFunc("/", RootPageUrl)
 	http.HandleFunc("/shorten", shortUrlHandler)
-	http.HandleFunc("/redirect/", redirectUrlHandler)
-	fmt.Println("starting server on PORT 3000...")
-	err := http.ListenAndServe(":3000", nil)
+	http.HandleFunc("/r/", redirectUrlHandler)
+
+	if os.Getenv("SERVE_FRONTEND") == "true" {
+		distDir := os.Getenv("FRONTEND_DIST")
+		if distDir == "" {
+			distDir = "./frontend/dist"
+		}
+		http.Handle("/", http.FileServer(http.Dir(distDir)))
+		fmt.Println("serving frontend from", distDir)
+	} else {
+		fmt.Println("SERVE_FRONTEND not enabled; skipping static file handler")
+	}
+
+	// Use PORT from environment (Render provides it). Default to 3000 for local dev.
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "3000"
+	}
+	fmt.Println("starting server on PORT", port)
+	err := http.ListenAndServe(":"+port, nil)
 	if err != nil {
 		fmt.Println("error on starting the http server", err)
 	}
