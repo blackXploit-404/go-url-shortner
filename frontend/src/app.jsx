@@ -1,18 +1,64 @@
-import { useState } from 'preact/hooks'
+import { useEffect, useState } from 'preact/hooks'
 import { siGo, siPreact } from 'simple-icons/icons'
+import { downloadStyledQr, generateStyledQrDataUrl } from './qrStyle'
 
 export function App() {
   const [url, setUrl] = useState('')
   const [shortUrl, setShortUrl] = useState('')
+  const [qrDataUrl, setQrDataUrl] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [downloaded, setDownloaded] = useState(false)
+  const [showQrLiveNotice, setShowQrLiveNotice] = useState(true)
+  const [noticeVisible, setNoticeVisible] = useState(false)
+
+  useEffect(() => {
+    const showTimer = window.setTimeout(() => setNoticeVisible(true), 100)
+    const hideTimer = window.setTimeout(() => {
+      setNoticeVisible(false)
+      window.setTimeout(() => setShowQrLiveNotice(false), 300)
+    }, 6000)
+
+    return () => {
+      window.clearTimeout(showTimer)
+      window.clearTimeout(hideTimer)
+    }
+  }, [])
+
+  const dismissQrLiveNotice = () => {
+    setNoticeVisible(false)
+    window.setTimeout(() => setShowQrLiveNotice(false), 300)
+  }
+
+  useEffect(() => {
+    if (!shortUrl) {
+      setQrDataUrl('')
+      return
+    }
+
+    let cancelled = false
+
+    generateStyledQrDataUrl(shortUrl)
+      .then((dataUrl) => {
+        if (!cancelled) setQrDataUrl(dataUrl)
+      })
+      .catch(() => {
+        if (!cancelled) setQrDataUrl('')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [shortUrl])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
     setError('')
     setShortUrl('')
+    setQrDataUrl('')
     setCopied(false)
+    setDownloaded(false)
 
     const trimmedUrl = url.trim()
     if (!trimmedUrl) {
@@ -53,8 +99,57 @@ export function App() {
     window.setTimeout(() => setCopied(false), 1500)
   }
 
+  const getShortId = (value) => {
+    try {
+      const match = new URL(value).pathname.match(/^\/r\/([^/]+)$/)
+      return match?.[1] ?? 'link'
+    } catch {
+      return 'link'
+    }
+  }
+
+  const handleDownloadQr = async () => {
+    if (!shortUrl) return
+
+    try {
+      await downloadStyledQr(shortUrl, `qr-${getShortId(shortUrl)}.png`)
+      setDownloaded(true)
+      window.setTimeout(() => setDownloaded(false), 1500)
+    } catch {
+      if (!qrDataUrl) return
+
+      const link = document.createElement('a')
+      link.href = qrDataUrl
+      link.download = `qr-${getShortId(shortUrl)}.png`
+      link.click()
+
+      setDownloaded(true)
+      window.setTimeout(() => setDownloaded(false), 1500)
+    }
+  }
+
   return (
-    <main class="min-h-screen w-full bg-white text-zinc-950">
+    <main class="relative min-h-screen w-full bg-white text-zinc-950">
+      {showQrLiveNotice ? (
+        <div
+          class={`qr-live-notice ${noticeVisible ? 'qr-live-notice--visible' : ''}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span class="qr-live-notice__pulse" aria-hidden="true" />
+          <p class="text-sm font-medium text-zinc-950">
+            QR code generation is now live
+          </p>
+          <button
+            type="button"
+            onClick={dismissQrLiveNotice}
+            class="qr-live-notice__close"
+            aria-label="Dismiss notification"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
       <section class="mx-auto flex min-h-screen w-full max-w-2xl items-center px-6 py-10">
         <div class="w-full space-y-8">
           <header class="space-y-3">
@@ -65,8 +160,8 @@ export function App() {
               Shorten links.
             </h1>
             <p class="max-w-xl text-base leading-7 text-zinc-600">
-              Paste a URL, generate a short link, and copy it. No extra bs,
-              no clutter 🗿.
+              Paste a URL, generate a short link, copy it, or scan the QR
+              code. No extra bs, no clutter 🗿.
             </p>
           </header>
 
@@ -127,6 +222,34 @@ export function App() {
                   </a>
                 </div>
               </div>
+
+              {qrDataUrl ? (
+                <div class="space-y-3 pt-2 qr-code-reveal">
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p class="text-sm font-medium text-zinc-700">QR Code</p>
+                    <button
+                      type="button"
+                      onClick={handleDownloadQr}
+                      class="h-11 border border-zinc-200 px-4 text-sm font-medium text-zinc-950 sm:w-auto"
+                    >
+                      {downloaded ? 'Downloaded' : 'Download QR'}
+                    </button>
+                  </div>
+                  <div class="styled-qr-frame inline-flex p-3">
+                    <img
+                      src={qrDataUrl}
+                      alt={`QR code for ${shortUrl}`}
+                      width="224"
+                      height="224"
+                      class="h-56 w-56"
+                    />
+                  </div>
+                  <p class="text-sm text-zinc-500">
+                    Styled QR with rounded modules and a center link mark. Scan
+                    to open the short link on another device.
+                  </p>
+                </div>
+              ) : null}
             </section>
           ) : null}
 

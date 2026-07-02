@@ -9,6 +9,7 @@ export default defineConfig({
     proxy: {
       '/shorten': 'https://shrt.qd.je',
       '/r': 'https://shrt.qd.je',
+      '/qr': 'https://shrt.qd.je',
     },
   },
 })

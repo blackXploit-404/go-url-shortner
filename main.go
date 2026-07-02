@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/skip2/go-qrcode"
 	//"github.com/mattn/go-sqlite3"
 )
 
@@ -20,8 +22,30 @@ type URL struct {
 	CreationDate time.Time `json:"creationdate"`
 }
 
-var urlDB = make(map[string]URL)
+var(  
+ urlDB = make(map[string]URL)
+ urlDBMu sync.RWMutex
+)
+func qrCodeHandler(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Path[len("/qr/"):]
 
+	_, err := getURL(id)
+	if err != nil {
+		http.Error(w, "Invalid request", http.StatusNotFound)
+		return
+	}
+
+	shortURL := buildPublicBaseURL(r) + "/r/" + id
+
+	png, err := qrcode.Encode(shortURL, qrcode.Medium, 256)
+	if err != nil {
+		http.Error(w, "Failed to generate QR code", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "image/png")
+	w.Write(png)
+}
 func GenerateShortUrl(originalurl string) string {
 	// hasher := md5.New()
 	// hasher.Write([]byte(originalurl))
@@ -37,19 +61,23 @@ func GenerateShortUrl(originalurl string) string {
 	//return id[:8] // if we use 5 or 4 then there is a high probability the string is being repeated.
 }
 
-func createUrl(OriginalUrl string) string {
-	ShortURL := GenerateShortUrl(OriginalUrl)
-	id := ShortURL
-	urlDB[id] = URL{
-		ID:           id,
-		OriginalUrl:  OriginalUrl,
-		ShortUrl:     ShortURL,
+func createUrl(originalUrl string) string {
+	shortURL := GenerateShortUrl(originalUrl)
+	urlDBMu.Lock()
+	urlDB[shortURL] = URL{
+		ID:           shortURL,
+		OriginalUrl:  originalUrl,
+		ShortUrl:     shortURL,
 		CreationDate: time.Now(),
 	}
-	return ShortURL
+	urlDBMu.Unlock()
+	return shortURL
 }
+
 func getURL(id string) (URL, error) {
+	urlDBMu.RLock()
 	url, ok := urlDB[id]
+	urlDBMu.RUnlock()
 	if !ok {
 		return URL{}, errors.New("url not found")
 	}
@@ -82,10 +110,13 @@ func shortUrlHandler(w http.ResponseWriter, r *http.Request) {
 	shortURL := createUrl(data.URL)
 	// fmt.Fprintf(w ,shortURL,data)
 
+	baseURL := buildPublicBaseURL(r)
 	response := struct {
 		ShortURL string `json:"short_url"`
+		QRURL    string `json:"qr_url"`
 	}{
-		ShortURL: buildPublicBaseURL(r) + "/r/" + shortURL,
+		ShortURL: baseURL + "/r/" + shortURL,
+		QRURL:    baseURL + "/qr/" + shortURL,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(response)
@@ -113,7 +144,7 @@ func main() {
 	//http.HandleFunc("/", RootPageUrl)
 	http.HandleFunc("/shorten", shortUrlHandler)
 	http.HandleFunc("/r/", redirectUrlHandler)
-
+    http.HandleFunc("/qr/", qrCodeHandler)
 	if os.Getenv("SERVE_FRONTEND") == "true" {
 		distDir := os.Getenv("FRONTEND_DIST")
 		if distDir == "" {

@@ -10,6 +10,7 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/mattn/go-sqlite3 v1.14.44 // indirect
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/sosodev/duration v1.4.0 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.33 // indirect
 	golang.org/x/sync v0.20.0 // indirect
